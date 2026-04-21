@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  influxdb3:
+    image: influxdb:3-core
+    container_name: influxdb3
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb3_data:/.data
+      - ./admin.token:/admin.token:ro
+    command: >
+      influxdb3 serve
+      --http-bind=0.0.0.0:8086
+      --admin-token-file=/admin.token
+      --node-id=node1
+
+  influxdb3-explorer:
+    image: influxdata/influxdb3-ui:1.6.2
+    container_name: influxdb3-explorer
+    ports:
+      - "8888:80"
+      - "8889:8888"
+    depends_on:
+      - influxdb3
+    command: --mode=admin
+
+  nodered:
+    image: nodered/node-red:latest
+    container_name: node-red
+    ports:
+      - "1880:1880"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - node_red_data:/data
+      - ./nodered/flows.json:/data/flows.json
+    depends_on:
+      - influxdb3
+      - mosquitto
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+
+volumes:
+  node_red_data:
+  influxdb3_data:
