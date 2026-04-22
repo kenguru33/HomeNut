@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SensorType } from '../../shared/types'
+import type { SensorType, SensorView } from '../../shared/types'
 
 const {
   rooms,
@@ -16,6 +16,7 @@ const {
 
 const showAddRoom = ref(false)
 const addSensorForRoom = ref<{ id: number; name: string } | null>(null)
+const historyTarget = ref<{ sensor: SensorView; roomName: string } | null>(null)
 
 async function onAddRoom(name: string) {
   await addRoom(name)
@@ -73,6 +74,7 @@ async function onAddSensor(payload: {
         @remove-sensor="removeSensor"
         @add-sensor="id => addSensorForRoom = rooms.find(r => r.id === id) ?? null"
         @open-live="id => activeSensorId = id"
+        @view-history="sensor => historyTarget = { sensor, roomName: room.name }"
       />
     </div>
 
@@ -95,6 +97,13 @@ async function onAddSensor(payload: {
       :camera-name="`${activeCameraContext.roomName} — ${activeCameraContext.sensor.label ?? 'Camera'}`"
       :stream-url="activeCameraContext.sensor.streamUrl"
       @close="activeSensorId = null"
+    />
+
+    <SensorHistoryModal
+      v-if="historyTarget"
+      :sensor="historyTarget.sensor"
+      :room-name="historyTarget.roomName"
+      @close="historyTarget = null"
     />
   </div>
 </template>

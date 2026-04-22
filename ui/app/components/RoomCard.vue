@@ -10,6 +10,7 @@ const emit = defineEmits<{
   (e: 'remove-sensor', sensorId: number): void
   (e: 'add-sensor', roomId: number): void
   (e: 'open-live', sensorId: number): void
+  (e: 'view-history', sensor: SensorView): void
 }>()
 
 const tempSensor    = computed(() => props.room.sensors.find(s => s.type === 'temperature') ?? null)
@@ -102,7 +103,7 @@ function sensorDisplayLabel(s: SensorView) {
 
     <!-- Climate sensors -->
     <div v-if="hasClimate" class="sensors">
-      <div v-if="tempSensor" class="sensor">
+      <div v-if="tempSensor" class="sensor sensor-clickable" @click="emit('view-history', tempSensor)">
         <span class="sensor-icon">🌡️</span>
         <div class="sensor-data">
           <span class="sensor-value">
@@ -115,7 +116,7 @@ function sensorDisplayLabel(s: SensorView) {
           </span>
         </div>
       </div>
-      <div v-if="humSensor" class="sensor">
+      <div v-if="humSensor" class="sensor sensor-clickable" @click="emit('view-history', humSensor)">
         <span class="sensor-icon">💧</span>
         <div class="sensor-data">
           <span class="sensor-value">
@@ -154,7 +155,12 @@ function sensorDisplayLabel(s: SensorView) {
     </div>
 
     <!-- Motion status -->
-    <div v-if="motionSensor" class="motion-row" :class="{ recent: recentMotion(motionSensor.lastMotion) }">
+    <div
+      v-if="motionSensor"
+      class="motion-row"
+      :class="{ recent: recentMotion(motionSensor.lastMotion), 'sensor-clickable': true }"
+      @click="emit('view-history', motionSensor)"
+    >
       <span>🏃</span>
       <span v-if="motionSensor.lastMotion">
         {{ recentMotion(motionSensor.lastMotion) ? 'Motion detected' : 'Last motion' }}
@@ -288,6 +294,26 @@ function sensorDisplayLabel(s: SensorView) {
 }
 
 .sensor-icon { font-size: 1.3rem; }
+
+.sensor-clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sensor.sensor-clickable:hover {
+  background: #1a2035;
+}
+
+.motion-row.sensor-clickable {
+  border-radius: 8px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  transition: background 0.15s;
+}
+
+.motion-row.sensor-clickable:hover {
+  background: #1a2035;
+}
 
 .sensor-data {
   display: flex;
