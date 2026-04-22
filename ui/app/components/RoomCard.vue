@@ -4,10 +4,10 @@ import type { RoomWithSensors, SensorView } from '../../shared/types'
 const props = defineProps<{ room: RoomWithSensors }>()
 
 const emit = defineEmits<{
-  (e: 'save-ref', roomId: number, refTemp: number, refHumidity: number): void
-  (e: 'clear-ref', roomId: number): void
+  (e: 'save-ref', roomId: number, refTemp: number | null, refHumidity: number | null): void
   (e: 'remove-room', roomId: number): void
   (e: 'remove-sensor', sensorId: number): void
+  (e: 'rename-room', roomId: number, name: string): void
   (e: 'add-sensor', roomId: number): void
   (e: 'open-live', sensorId: number): void
   (e: 'view-history', sensor: SensorView): void
@@ -19,31 +19,50 @@ const motionSensor  = computed(() => props.room.sensors.find(s => s.type === 'mo
 const cameras       = computed(() => props.room.sensors.filter(s => s.type === 'camera'))
 const hasClimate    = computed(() => tempSensor.value || humSensor.value)
 
-const editing   = ref(false)
-const refTemp     = ref(props.room.reference?.refTemp     ?? 21)
-const refHumidity = ref(props.room.reference?.refHumidity ?? 50)
+const editing        = ref(false)
+const refTempEnabled = ref(props.room.reference !== null && props.room.reference.refTemp !== null)
+const refHumEnabled  = ref(props.room.reference !== null && props.room.reference.refHumidity !== null)
+const refTemp        = ref(props.room.reference?.refTemp     ?? 21)
+const refHumidity    = ref(props.room.reference?.refHumidity ?? 50)
+const editName       = ref(props.room.name)
+
+const confirmRoom   = ref(false)
+const confirmSensor = ref<number | null>(null)
 
 watch(() => props.room.reference, (ref) => {
   if (!editing.value) {
-    refTemp.value     = ref?.refTemp     ?? 21
-    refHumidity.value = ref?.refHumidity ?? 50
+    refTempEnabled.value = ref !== null && ref.refTemp !== null
+    refHumEnabled.value  = ref !== null && ref.refHumidity !== null
+    refTemp.value        = ref?.refTemp     ?? 21
+    refHumidity.value    = ref?.refHumidity ?? 50
   }
 })
 
 watch(editing, (open) => {
   if (open) {
-    refTemp.value     = props.room.reference?.refTemp     ?? 21
-    refHumidity.value = props.room.reference?.refHumidity ?? 50
+    refTempEnabled.value = props.room.reference !== null && props.room.reference.refTemp !== null
+    refHumEnabled.value  = props.room.reference !== null && props.room.reference.refHumidity !== null
+    refTemp.value        = props.room.reference?.refTemp     ?? 21
+    refHumidity.value    = props.room.reference?.refHumidity ?? 50
+    editName.value       = props.room.name
   }
 })
 
 function saveRef() {
-  emit('save-ref', props.room.id, refTemp.value, refHumidity.value)
+  if (editName.value.trim() && editName.value.trim() !== props.room.name) {
+    emit('rename-room', props.room.id, editName.value.trim())
+  }
+  emit('save-ref', props.room.id,
+    refTempEnabled.value ? refTemp.value : null,
+    refHumEnabled.value  ? refHumidity.value : null,
+  )
   editing.value = false
 }
 
-function clearRef() {
-  emit('clear-ref', props.room.id)
+function closeEditing() {
+  if (editName.value.trim() && editName.value.trim() !== props.room.name) {
+    emit('rename-room', props.room.id, editName.value.trim())
+  }
   editing.value = false
 }
 
@@ -68,32 +87,33 @@ function recentMotion(ts: number | null) {
   return ts ? Date.now() - ts < 5 * 60 * 1000 : false
 }
 
-function sensorIcon(s: SensorView) {
-  return { temperature: '🌡️', humidity: '💧', camera: '📷', motion: '🏃' }[s.type]
-}
-
-function sensorDisplayLabel(s: SensorView) {
-  return s.label || { temperature: 'Temperature', humidity: 'Humidity', camera: 'Camera', motion: 'Motion' }[s.type]
-}
 </script>
 
 <template>
   <div class="room-card" :class="{ editing }">
     <!-- Header -->
     <div class="card-header">
-      <h2 class="room-name">{{ room.name }}</h2>
+      <input
+        v-if="editing"
+        v-model="editName"
+        class="room-name-input"
+        maxlength="60"
+        @keydown.enter="closeEditing"
+        @keydown.escape="editing = false"
+      />
+      <h2 v-else class="room-name">{{ room.name }}</h2>
       <div class="header-actions">
         <button class="icon-btn" title="Add sensor" @click="emit('add-sensor', room.id)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M12 5v14M5 12h14"/>
           </svg>
         </button>
-        <button class="icon-btn edit-btn" :class="{ active: editing }" title="Set reference" @click="editing = !editing">
+        <button class="icon-btn edit-btn" :class="{ active: editing }" title="Edit" @click="editing ? closeEditing() : (editing = true)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
           </svg>
         </button>
-        <button class="icon-btn delete-btn" title="Remove room" @click="emit('remove-room', room.id)">
+        <button class="icon-btn delete-btn" title="Remove room" @click="confirmRoom = true">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
           </svg>
@@ -101,119 +121,134 @@ function sensorDisplayLabel(s: SensorView) {
       </div>
     </div>
 
-    <!-- Climate sensors -->
-    <div v-if="hasClimate" class="sensors">
-      <div v-if="tempSensor" class="sensor sensor-clickable" @click="emit('view-history', tempSensor)">
-        <span class="sensor-icon">🌡️</span>
-        <div class="sensor-data">
-          <span class="sensor-value">
-            {{ tempSensor.latestValue !== null ? `${tempSensor.latestValue}°C` : '—' }}
-          </span>
-          <span class="sensor-label">{{ tempSensor.label ?? 'Temperature' }}</span>
-          <span v-if="room.reference" class="ref-line">
-            ref {{ room.reference.refTemp }}°
-            <span v-if="tempDev" class="dev" :class="parseFloat(tempDev) > 0 ? 'over' : 'under'">{{ tempDev }}</span>
-          </span>
-        </div>
-      </div>
-      <div v-if="humSensor" class="sensor sensor-clickable" @click="emit('view-history', humSensor)">
-        <span class="sensor-icon">💧</span>
-        <div class="sensor-data">
-          <span class="sensor-value">
-            {{ humSensor.latestValue !== null ? `${humSensor.latestValue}%` : '—' }}
-          </span>
-          <span class="sensor-label">{{ humSensor.label ?? 'Humidity' }}</span>
-          <span v-if="room.reference" class="ref-line">
-            ref {{ room.reference.refHumidity }}%
-            <span v-if="humDev" class="dev" :class="parseFloat(humDev) > 0 ? 'over' : 'under'">{{ humDev }}</span>
-          </span>
-        </div>
-      </div>
-    </div>
+    <!-- Sensor grid: all types as equal-sized tiles -->
+    <div v-if="room.sensors.length" class="sensor-grid">
 
-    <!-- Cameras -->
-    <div v-if="cameras.length" class="cameras">
+      <!-- Temperature -->
+      <div v-if="tempSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', tempSensor)">
+        <span class="tile-icon">🌡️</span>
+        <span class="tile-value">{{ tempSensor.latestValue !== null ? `${tempSensor.latestValue}°C` : '—' }}</span>
+        <span class="tile-label">{{ tempSensor.label ?? 'Temperature' }}</span>
+        <span v-if="room.reference?.refTemp !== null && room.reference !== null" class="tile-ref">
+          target {{ room.reference.refTemp }}°
+          <span v-if="tempDev" class="dev" :class="parseFloat(tempDev) > 0 ? 'over' : 'under'">{{ tempDev }}</span>
+        </span>
+        <button v-if="editing" class="tile-remove" title="Remove sensor" @click.stop="confirmSensor = tempSensor.id">×</button>
+      </div>
+
+      <!-- Humidity -->
+      <div v-if="humSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', humSensor)">
+        <span class="tile-icon">💧</span>
+        <span class="tile-value">{{ humSensor.latestValue !== null ? `${humSensor.latestValue}%` : '—' }}</span>
+        <span class="tile-label">{{ humSensor.label ?? 'Humidity' }}</span>
+        <span v-if="room.reference !== null && room.reference?.refHumidity !== null" class="tile-ref">
+          target {{ room.reference.refHumidity }}%
+          <span v-if="humDev" class="dev" :class="parseFloat(humDev) > 0 ? 'over' : 'under'">{{ humDev }}</span>
+        </span>
+        <button v-if="editing" class="tile-remove" title="Remove sensor" @click.stop="confirmSensor = humSensor.id">×</button>
+      </div>
+
+      <!-- Cameras -->
       <div
         v-for="cam in cameras"
         :key="cam.id"
-        class="camera-thumb"
+        class="sensor-tile camera-tile sensor-clickable"
         @click="emit('open-live', cam.id)"
       >
-        <div class="thumb-area">
-          <img v-if="cam.snapshotUrl" :src="cam.snapshotUrl" :alt="cam.label ?? 'Camera'" class="thumb-img" />
-          <div v-else class="thumb-placeholder">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-              <circle cx="12" cy="13" r="3"/>
-            </svg>
-          </div>
-          <div class="thumb-overlay">▶ Live</div>
-          <div v-if="recentMotion(cam.lastMotion)" class="motion-badge">Motion</div>
+        <img v-if="cam.snapshotUrl" :src="cam.snapshotUrl" :alt="cam.label ?? 'Camera'" class="cam-img" />
+        <div v-else class="cam-placeholder">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+            <circle cx="12" cy="13" r="3"/>
+          </svg>
         </div>
-        <span class="cam-label">{{ cam.label ?? 'Camera' }}</span>
+        <div class="cam-overlay">▶ Live</div>
+        <div v-if="recentMotion(cam.lastMotion)" class="motion-badge">Motion</div>
+        <span class="cam-floor-label">{{ cam.label ?? 'Camera' }}</span>
+        <button v-if="editing" class="tile-remove cam-remove" title="Remove sensor" @click.stop="confirmSensor = cam.id">×</button>
       </div>
+
+      <!-- Motion -->
+      <div
+        v-if="motionSensor"
+        class="sensor-tile sensor-clickable"
+        :class="{ 'motion-active': recentMotion(motionSensor.lastMotion) }"
+        @click="emit('view-history', motionSensor)"
+      >
+        <span class="tile-icon">🏃</span>
+        <span class="tile-value" :class="{ 'motion-recent': recentMotion(motionSensor.lastMotion) }">
+          {{ motionSensor.lastMotion ? (recentMotion(motionSensor.lastMotion) ? 'Detected' : 'Clear') : '—' }}
+        </span>
+        <span class="tile-label">{{ motionSensor.label ?? 'Motion' }}</span>
+        <span v-if="motionSensor.lastMotion" class="tile-ref">{{ motionLabel(motionSensor.lastMotion) }}</span>
+        <button v-if="editing" class="tile-remove" title="Remove sensor" @click.stop="confirmSensor = motionSensor.id">×</button>
+      </div>
+
     </div>
 
-    <!-- Motion status -->
-    <div
-      v-if="motionSensor"
-      class="motion-row"
-      :class="{ recent: recentMotion(motionSensor.lastMotion), 'sensor-clickable': true }"
-      @click="emit('view-history', motionSensor)"
-    >
-      <span>🏃</span>
-      <span v-if="motionSensor.lastMotion">
-        {{ recentMotion(motionSensor.lastMotion) ? 'Motion detected' : 'Last motion' }}
-        — {{ motionLabel(motionSensor.lastMotion) }}
-      </span>
-      <span v-else class="no-motion">No motion recorded</span>
-    </div>
-
-    <!-- Edit panel -->
+    <!-- Edit panel: per-sensor target toggles (only when climate sensors present) -->
     <Transition name="slide">
-      <div v-if="editing" class="edit-panel">
-        <!-- Sensor list -->
-        <div v-if="room.sensors.length" class="sensor-chips">
-          <span
-            v-for="s in room.sensors"
-            :key="s.id"
-            class="chip"
-          >
-            {{ sensorIcon(s) }} {{ sensorDisplayLabel(s) }}
-            <button class="chip-remove" @click="emit('remove-sensor', s.id)">×</button>
-          </span>
+      <div v-if="editing && hasClimate" class="edit-panel">
+
+        <div v-if="tempSensor" class="target-row">
+          <div class="toggle-row">
+            <span class="toggle-label">🌡️ Target temperature</span>
+            <label class="toggle-switch">
+              <input v-model="refTempEnabled" type="checkbox" />
+              <span class="toggle-track"><span class="toggle-thumb" /></span>
+            </label>
+          </div>
+          <Transition name="slide">
+            <div v-if="refTempEnabled" class="slider-wrap">
+              <div class="slider-labels">
+                <span class="slider-value">{{ refTemp }}°C</span>
+              </div>
+              <input v-model.number="refTemp" type="range" min="10" max="30" step="0.5" class="slider" />
+              <div class="slider-ticks"><span>10°</span><span>20°</span><span>30°</span></div>
+            </div>
+          </Transition>
         </div>
 
-        <!-- Ref sliders (only shown for present climate sensors) -->
-        <template v-if="hasClimate">
-          <div class="divider" />
-
-          <div v-if="tempSensor" class="slider-row">
-            <div class="slider-labels">
-              <span>🌡️ Reference temp</span>
-              <span class="slider-value">{{ refTemp }}°C</span>
+        <div v-if="humSensor" class="target-row">
+          <div class="toggle-row">
+            <span class="toggle-label">💧 Target humidity</span>
+            <label class="toggle-switch">
+              <input v-model="refHumEnabled" type="checkbox" />
+              <span class="toggle-track"><span class="toggle-thumb" /></span>
+            </label>
+          </div>
+          <Transition name="slide">
+            <div v-if="refHumEnabled" class="slider-wrap">
+              <div class="slider-labels">
+                <span class="slider-value">{{ refHumidity }}%</span>
+              </div>
+              <input v-model.number="refHumidity" type="range" min="20" max="80" step="1" class="slider" />
+              <div class="slider-ticks"><span>20%</span><span>50%</span><span>80%</span></div>
             </div>
-            <input v-model.number="refTemp" type="range" min="10" max="30" step="0.5" class="slider" />
-            <div class="slider-ticks"><span>10°</span><span>20°</span><span>30°</span></div>
-          </div>
+          </Transition>
+        </div>
 
-          <div v-if="humSensor" class="slider-row">
-            <div class="slider-labels">
-              <span>💧 Reference humidity</span>
-              <span class="slider-value">{{ refHumidity }}%</span>
-            </div>
-            <input v-model.number="refHumidity" type="range" min="20" max="80" step="1" class="slider" />
-            <div class="slider-ticks"><span>20%</span><span>50%</span><span>80%</span></div>
-          </div>
-
-          <div class="edit-actions">
-            <button class="btn-clear" @click="clearRef">Clear ref</button>
-            <button class="btn-save" @click="saveRef">Save</button>
-          </div>
-        </template>
+        <div class="edit-actions">
+          <button class="btn-save" @click="saveRef">Save</button>
+        </div>
       </div>
     </Transition>
   </div>
+
+  <ConfirmDialog
+    v-if="confirmRoom"
+    :message="`Delete room &quot;${room.name}&quot;? This will also remove all its sensors.`"
+    @confirm="emit('remove-room', room.id); confirmRoom = false"
+    @cancel="confirmRoom = false"
+  />
+
+  <ConfirmDialog
+    v-if="confirmSensor !== null"
+    message="Remove this sensor from the room?"
+    confirm-label="Remove"
+    @confirm="emit('remove-sensor', confirmSensor!); confirmSensor = null"
+    @cancel="confirmSensor = null"
+  />
 </template>
 
 <style scoped>
@@ -238,6 +273,7 @@ function sensorDisplayLabel(s: SensorView) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .room-name {
@@ -245,6 +281,20 @@ function sensorDisplayLabel(s: SensorView) {
   font-weight: 600;
   color: #e2e8f0;
   letter-spacing: 0.02em;
+}
+
+.room-name-input {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.02em;
+  background: #151825;
+  border: 1px solid #4a6fa5;
+  border-radius: 6px;
+  padding: 2px 8px;
+  outline: none;
+  flex: 1;
+  min-width: 0;
 }
 
 .header-actions {
@@ -277,114 +327,104 @@ function sensorDisplayLabel(s: SensorView) {
 .edit-btn.active   { color: #a0c4ff; border-color: #4a6fa5; background: #151825; }
 .delete-btn:hover  { color: #f87171; border-color: #ef4444; }
 
-/* Climate sensors */
-.sensors {
-  display: flex;
-  gap: 12px;
-}
-
-.sensor {
-  flex: 1;
-  background: #151825;
-  border-radius: 10px;
-  padding: 12px;
-  display: flex;
-  align-items: center;
+/* Sensor grid */
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
   gap: 10px;
 }
 
-.sensor-icon { font-size: 1.3rem; }
+.sensor-tile {
+  background: #151825;
+  border-radius: 10px;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  position: relative;
+  min-height: 96px;
+  text-align: center;
+}
 
 .sensor-clickable {
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.sensor.sensor-clickable:hover {
-  background: #1a2035;
-}
+.sensor-tile.sensor-clickable:hover { background: #1a2035; }
 
-.motion-row.sensor-clickable {
-  border-radius: 8px;
-  padding: 4px 6px;
-  margin: -4px -6px;
-  transition: background 0.15s;
-}
+.tile-icon { font-size: 1.3rem; }
 
-.motion-row.sensor-clickable:hover {
-  background: #1a2035;
-}
-
-.sensor-data {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sensor-value {
+.tile-value {
   font-size: 1.2rem;
   font-weight: 700;
   color: #a0c4ff;
 }
 
-.sensor-label {
-  font-size: 0.7rem;
+.tile-label {
+  font-size: 0.68rem;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
-.ref-line {
-  font-size: 0.7rem;
+.tile-ref {
+  font-size: 0.68rem;
   color: #475569;
-  margin-top: 3px;
+  margin-top: 2px;
   display: flex;
-  gap: 4px;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
 }
 
 .dev { font-weight: 600; }
 .dev.over  { color: #f87171; }
 .dev.under { color: #34d399; }
 
-/* Cameras */
-.cameras {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.camera-thumb {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+.tile-remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: none;
+  border: none;
+  color: #334155;
   cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
 }
 
-.thumb-area {
-  position: relative;
-  width: 120px;
-  aspect-ratio: 16/9;
-  border-radius: 8px;
+.tile-remove:hover { color: #f87171; }
+
+/* Camera tile */
+.camera-tile {
+  padding: 0;
   overflow: hidden;
-  background: #151825;
 }
 
-.thumb-img {
+.cam-img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.thumb-placeholder {
-  width: 100%;
-  height: 100%;
+.cam-placeholder {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #2a2f45;
 }
 
-.thumb-overlay {
+.cam-overlay {
   position: absolute;
   inset: 0;
   background: rgba(0,0,0,0.5);
@@ -399,7 +439,24 @@ function sensorDisplayLabel(s: SensorView) {
   letter-spacing: 0.04em;
 }
 
-.camera-thumb:hover .thumb-overlay { opacity: 1; }
+.camera-tile:hover .cam-overlay { opacity: 1; }
+
+.cam-floor-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 6px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.65));
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.8);
+  text-align: center;
+}
+
+.cam-remove {
+  background: rgba(0,0,0,0.55);
+  color: #cbd5e1;
+}
 
 .motion-badge {
   position: absolute;
@@ -415,23 +472,9 @@ function sensorDisplayLabel(s: SensorView) {
   letter-spacing: 0.05em;
 }
 
-.cam-label {
-  font-size: 0.72rem;
-  color: #64748b;
-  text-align: center;
-}
+/* Motion tile */
+.motion-recent { color: #f87171; }
 
-/* Motion row */
-.motion-row {
-  font-size: 0.8rem;
-  color: #475569;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.motion-row.recent { color: #f87171; }
-.no-motion { color: #334155; }
 
 /* Edit panel */
 .edit-panel {
@@ -441,39 +484,6 @@ function sensorDisplayLabel(s: SensorView) {
   flex-direction: column;
   gap: 14px;
 }
-
-.sensor-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #151825;
-  border: 1px solid #2a2f45;
-  border-radius: 20px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
-  color: #94a3b8;
-}
-
-.chip-remove {
-  background: none;
-  border: none;
-  color: #475569;
-  cursor: pointer;
-  font-size: 0.95rem;
-  line-height: 1;
-  padding: 0;
-  transition: color 0.15s;
-}
-
-.chip-remove:hover { color: #f87171; }
-
-.divider { border: none; border-top: 1px solid #2a2f45; }
 
 .slider-row {
   display: flex;
@@ -526,26 +536,92 @@ function sensorDisplayLabel(s: SensorView) {
   color: #334155;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.toggle-switch {
+  position: relative;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-track {
+  display: block;
+  width: 36px;
+  height: 20px;
+  background: #2a2f45;
+  border-radius: 10px;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: #4a6fa5;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #64748b;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(16px);
+  background: #a0c4ff;
+}
+
+.target-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slider-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow: hidden;
+}
+
 .edit-actions {
   display: flex;
-  gap: 8px;
   justify-content: flex-end;
 }
 
-.btn-clear,
 .btn-save {
-  padding: 6px 14px;
+  padding: 0 14px;
+  min-width: 64px;
+  height: 30px;
+  line-height: 30px;
   border-radius: 8px;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
+  background: #4a6fa5;
+  color: #fff;
   border: none;
 }
-
-.btn-clear { background: #151825; color: #64748b; }
-.btn-clear:hover { color: #94a3b8; }
-.btn-save  { background: #4a6fa5; color: #fff; }
-.btn-save:hover { background: #6b93c7; }
+.btn-save:hover { opacity: 0.85; }
 
 .slide-enter-active,
 .slide-leave-active {

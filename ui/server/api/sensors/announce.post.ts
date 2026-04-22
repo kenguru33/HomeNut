@@ -11,7 +11,8 @@ export default defineEventHandler(async (event) => {
   if (!deviceId) throw createError({ statusCode: 400, message: 'deviceId is required' })
   if (!type) throw createError({ statusCode: 400, message: 'type is required' })
 
-  getDb().prepare(`
+  const db = getDb()
+  db.prepare(`
     INSERT INTO sensor_announcements (device_id, type, stream_url, snapshot_url, last_seen)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT (device_id, type) DO UPDATE SET
@@ -19,6 +20,9 @@ export default defineEventHandler(async (event) => {
       snapshot_url = excluded.snapshot_url,
       last_seen    = excluded.last_seen
   `).run(deviceId, type, streamUrl ?? null, snapshotUrl ?? null, Date.now())
+  try {
+    db.prepare('DELETE FROM blocked_sensors WHERE device_id = ? AND type = ?').run(deviceId, type)
+  } catch {}
   console.log(`[announce] device announced: ${deviceId} type=${type}`, { streamUrl, snapshotUrl })
 
   return { ok: true }

@@ -5,17 +5,26 @@ import type { DiscoveredSensor } from '../../../shared/types'
 export default defineEventHandler(async (): Promise<DiscoveredSensor[]> => {
   const db = getDb()
 
-  const assigned = db
-    .prepare('SELECT device_id, type FROM sensors WHERE device_id IS NOT NULL')
+  // Sensors already assigned to a room — exclude from fresh discovery
+  const assignedToRoom = db
+    .prepare('SELECT device_id, type FROM sensors WHERE device_id IS NOT NULL AND room_id IS NOT NULL')
     .all() as { device_id: string; type: string }[]
 
-  const blocked = db
-    .prepare('SELECT device_id, type FROM blocked_sensors')
-    .all() as { device_id: string; type: string }[]
+  // Unassigned persisted sensors (room_id IS NULL) — shown in their own section
+  const unassignedDb = db
+    .prepare('SELECT id, type, label, device_id, stream_url, snapshot_url, created_at FROM sensors WHERE room_id IS NULL')
+    .all() as { id: number; type: string; label: string | null; device_id: string | null; stream_url: string | null; snapshot_url: string | null; created_at: number }[]
+
+  let blocked: { device_id: string; type: string }[] = []
+  try {
+    blocked = db.prepare('SELECT device_id, type FROM blocked_sensors').all() as typeof blocked
+  } catch {}
 
   const assignedSet = new Set([
-    ...assigned.map(s => `${s.device_id}:${s.type}`),
+    ...assignedToRoom.map(s => `${s.device_id}:${s.type}`),
     ...blocked.map(s => `${s.device_id}:${s.type}`),
+    // Exclude device_ids of unassigned DB sensors — they'll appear via unassignedDb instead
+    ...unassignedDb.filter(s => s.device_id).map(s => `${s.device_id}:${s.type}`),
   ])
 
   // Time-series sensors from InfluxDB (temperature, humidity, motion)
@@ -55,7 +64,18 @@ export default defineEventHandler(async (): Promise<DiscoveredSensor[]> => {
       snapshotUrl: a.snapshot_url,
     }))
 
-  return [...influxSensors, ...announcedSensors]
+  const unassignedSensors: DiscoveredSensor[] = unassignedDb.map(s => ({
+    deviceId: s.device_id,
+    sensorId: s.id,
+    sensorType: s.type,
+    label: s.label,
+    lastSeen: s.created_at,
+    latestValue: null,
+    streamUrl: s.stream_url,
+    snapshotUrl: s.snapshot_url,
+  }))
+
+  return [...influxSensors, ...announcedSensors, ...unassignedSensors]
 })
 
 function toMs(t: unknown): number {

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 const { data: sensors, refresh } = useFetch('/api/sensors', { default: () => [] })
 
-const showAll = ref(false)
+const onlyUnused = ref(false)
 const visibleSensors = computed(() =>
-  showAll.value ? sensors.value : sensors.value.filter(s => !s.roomName)
+  onlyUnused.value ? sensors.value.filter(s => !s.roomName) : sensors.value
 )
 
 const typeIcon: Record<string, string> = {
@@ -37,12 +37,19 @@ function formatAge(ms: number | null) {
   return `${Math.round(diff / 86400)}d ago`
 }
 
-async function removeSensor(sensor: { id: number | null; deviceId: string | null; type: string }) {
+type SensorRow = { id: number | null; deviceId: string | null; type: string; label: string | null }
+
+const pendingDelete = ref<SensorRow | null>(null)
+
+async function confirmDelete() {
+  const sensor = pendingDelete.value
+  if (!sensor) return
   if (sensor.id !== null) {
     await $fetch(`/api/sensors/${sensor.id}`, { method: 'DELETE' })
   } else if (sensor.deviceId) {
     await $fetch('/api/sensors/block', { method: 'DELETE', body: { deviceId: sensor.deviceId, type: sensor.type } })
   }
+  pendingDelete.value = null
   await refresh()
 }
 </script>
@@ -60,14 +67,14 @@ async function removeSensor(sensor: { id: number | null; deviceId: string | null
         <h1 class="page-title">Sensors</h1>
       </div>
       <label class="toggle-label">
-        <input type="checkbox" v-model="showAll" class="toggle-input" />
+        <input type="checkbox" v-model="onlyUnused" class="toggle-input" />
         <span class="toggle-track"><span class="toggle-thumb" /></span>
-        Show all sensors
+        Only show unused
       </label>
     </header>
 
     <div v-if="visibleSensors.length === 0" class="empty">
-      {{ showAll ? 'No sensors registered.' : 'No unused sensors.' }}
+      {{ onlyUnused ? 'No unused sensors.' : 'No sensors registered.' }}
     </div>
 
     <div v-else class="sensor-list">
@@ -90,7 +97,7 @@ async function removeSensor(sensor: { id: number | null; deviceId: string | null
           <span class="age">{{ formatAge(sensor.lastRecordedAt) }}</span>
         </div>
 
-        <button class="delete-btn" title="Remove sensor" @click="removeSensor(sensor)">
+        <button class="delete-btn" title="Remove sensor" @click="pendingDelete = sensor">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
           </svg>
@@ -98,6 +105,13 @@ async function removeSensor(sensor: { id: number | null; deviceId: string | null
       </div>
     </div>
   </div>
+
+  <ConfirmDialog
+    v-if="pendingDelete"
+    :message="`Delete sensor &quot;${pendingDelete.label || typeLabel[pendingDelete.type] || pendingDelete.type}&quot;?`"
+    @confirm="confirmDelete"
+    @cancel="pendingDelete = null"
+  />
 </template>
 
 <style scoped>

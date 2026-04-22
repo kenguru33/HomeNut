@@ -4,7 +4,7 @@ import type { SensorType, DiscoveredSensor } from '../../shared/types'
 defineProps<{ roomName: string }>()
 
 const emit = defineEmits<{
-  (e: 'add', payload: { type: SensorType; deviceId?: string; label: string; streamUrl: string; snapshotUrl: string }): void
+  (e: 'add', payload: { type: SensorType; sensorId?: number; deviceId?: string; label: string; streamUrl: string; snapshotUrl: string }): void
   (e: 'close'): void
 }>()
 
@@ -31,8 +31,13 @@ const manualTypes: { value: SensorType; icon: string; label: string }[] = [
   { value: 'motion', icon: '🏃', label: 'Motion' },
 ]
 
+function isSameDevice(a: DiscoveredSensor, b: DiscoveredSensor) {
+  if (a.sensorId && b.sensorId) return a.sensorId === b.sensorId
+  return a.deviceId === b.deviceId && a.sensorType === b.sensorType
+}
+
 function selectDevice(d: DiscoveredSensor) {
-  selected.value = selected.value?.deviceId === d.deviceId && selected.value?.sensorType === d.sensorType ? null : d
+  selected.value = selected.value && isSameDevice(selected.value, d) ? null : d
 }
 
 function submit() {
@@ -46,7 +51,8 @@ function submit() {
   } else if (selected.value) {
     emit('add', {
       type: selected.value.sensorType as SensorType,
-      deviceId: selected.value.deviceId,
+      sensorId: selected.value.sensorId,
+      deviceId: selected.value.deviceId ?? undefined,
       label: label.value.trim(),
       streamUrl: '',
       snapshotUrl: '',
@@ -71,8 +77,9 @@ function sensorIcon(type: string): string {
 }
 
 function sensorMeta(d: DiscoveredSensor): string {
-  if (d.sensorType === 'camera') return `camera · ${timeAgo(d.lastSeen)}`
-  return `${d.sensorType} · ${d.latestValue?.toFixed(1)} · ${timeAgo(d.lastSeen)}`
+  const age = d.sensorId ? 'unassigned' : timeAgo(d.lastSeen)
+  if (d.sensorType === 'camera') return `camera · ${age}`
+  return `${d.sensorType} · ${d.latestValue?.toFixed(1)} · ${age}`
 }
 
 const canSubmit = computed(() => manual.value ? true : selected.value !== null)
@@ -97,18 +104,18 @@ const canSubmit = computed(() => manual.value ? true : selected.value !== null)
                 <div class="device-list">
                   <button
                     v-for="d in discovered"
-                    :key="`${d.deviceId}:${d.sensorType}`"
+                    :key="d.sensorId ? `sensor:${d.sensorId}` : `${d.deviceId}:${d.sensorType}`"
                     type="button"
                     class="device-row"
-                    :class="{ selected: selected?.deviceId === d.deviceId && selected?.sensorType === d.sensorType }"
+                    :class="{ selected: !!selected && isSameDevice(selected, d) }"
                     @click="selectDevice(d)"
                   >
                     <span class="device-icon">{{ sensorIcon(d.sensorType) }}</span>
                     <span class="device-info">
-                      <span class="device-id">{{ d.deviceId }}</span>
+                      <span class="device-id">{{ d.label || d.deviceId || d.sensorType }}</span>
                       <span class="device-meta">{{ sensorMeta(d) }}</span>
                     </span>
-                    <span class="device-check">{{ selected?.deviceId === d.deviceId && selected?.sensorType === d.sensorType ? '✓' : '' }}</span>
+                    <span class="device-check">{{ selected && isSameDevice(selected, d) ? '✓' : '' }}</span>
                   </button>
                 </div>
               </template>

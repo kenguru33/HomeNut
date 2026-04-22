@@ -6,8 +6,8 @@ const {
   lastUpdated,
   addRoom,
   removeRoom,
+  renameRoom,
   saveReference,
-  clearReference,
   addSensor,
   removeSensor,
   activeSensorId,
@@ -25,6 +25,7 @@ async function onAddRoom(name: string) {
 
 async function onAddSensor(payload: {
   type: SensorType
+  sensorId?: number
   deviceId?: string
   label: string
   streamUrl: string
@@ -34,6 +35,7 @@ async function onAddSensor(payload: {
   await addSensor({
     roomId: addSensorForRoom.value.id,
     type: payload.type,
+    sensorId: payload.sensorId,
     deviceId: payload.deviceId,
     label: payload.label || undefined,
     streamUrl: payload.streamUrl || undefined,
@@ -70,8 +72,8 @@ async function onAddSensor(payload: {
         :key="room.id"
         :room="room"
         @save-ref="(id, t, h) => saveReference(id, { refTemp: t, refHumidity: h })"
-        @clear-ref="clearReference"
         @remove-room="removeRoom"
+        @rename-room="(id, name) => renameRoom(id, name)"
         @remove-sensor="removeSensor"
         @add-sensor="id => addSensorForRoom = rooms.find(r => r.id === id) ?? null"
         @open-live="id => activeSensorId = id"
@@ -199,7 +201,7 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 320px));
   gap: 16px;
 }
 </style>

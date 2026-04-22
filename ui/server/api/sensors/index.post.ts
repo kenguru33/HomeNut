@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{
     roomId: number
     type: SensorType
+    sensorId?: number
     deviceId?: string
     label?: string
     streamUrl?: string
@@ -17,6 +18,13 @@ export default defineEventHandler(async (event) => {
   if (!VALID_TYPES.includes(body.type)) throw createError({ statusCode: 400, message: 'invalid type' })
 
   const db = getDb()
+
+  // Re-assign an existing unassigned sensor rather than inserting a duplicate
+  if (body.sensorId) {
+    const result = db.prepare('UPDATE sensors SET room_id = ? WHERE id = ? AND room_id IS NULL').run(body.roomId, body.sensorId)
+    if (result.changes === 0) throw createError({ statusCode: 404, message: 'sensor not found or already assigned' })
+    return { id: body.sensorId }
+  }
 
   let streamUrl = body.streamUrl ?? null
   let snapshotUrl = body.snapshotUrl ?? null

@@ -10,24 +10,25 @@ function toMs(t: unknown): number {
 export default defineEventHandler(async () => {
   const db = getDb()
 
-  // Assigned sensors (in a room)
+  // All persisted sensors (assigned and unassigned)
   const assigned = db.prepare(`
     SELECT s.id, s.type, s.label, s.device_id, s.stream_url, s.snapshot_url,
            r.id AS room_id, r.name AS room_name
     FROM sensors s
-    JOIN rooms r ON r.id = s.room_id
+    LEFT JOIN rooms r ON r.id = s.room_id
     ORDER BY r.name ASC, s.type ASC
   `).all() as {
     id: number; type: string; label: string | null; device_id: string | null
     stream_url: string | null; snapshot_url: string | null
-    room_id: number; room_name: string
+    room_id: number | null; room_name: string | null
   }[]
 
   const assignedKeys = new Set(assigned.filter(s => s.device_id).map(s => `${s.device_id}:${s.type}`))
 
-  const blocked = db
-    .prepare('SELECT device_id, type FROM blocked_sensors')
-    .all() as { device_id: string; type: string }[]
+  let blocked: { device_id: string; type: string }[] = []
+  try {
+    blocked = db.prepare('SELECT device_id, type FROM blocked_sensors').all() as typeof blocked
+  } catch {}
   const blockedKeys = new Set(blocked.map(s => `${s.device_id}:${s.type}`))
 
   // Latest values from InfluxDB
@@ -77,8 +78,8 @@ export default defineEventHandler(async () => {
       type: s.type,
       label: s.label,
       deviceId: s.device_id,
-      roomId: s.room_id as number | null,
-      roomName: s.room_name as string | null,
+      roomId: s.room_id,
+      roomName: s.room_name,
       streamUrl: s.stream_url,
       snapshotUrl: s.snapshot_url,
       latestValue: latest?.value ?? null,

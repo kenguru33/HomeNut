@@ -14,8 +14,8 @@ export interface SensorView {
 }
 
 export interface RoomReference {
-  refTemp: number
-  refHumidity: number
+  refTemp: number | null
+  refHumidity: number | null
 }
 
 export interface RoomWithSensors {
@@ -26,8 +26,10 @@ export interface RoomWithSensors {
 }
 
 export interface DiscoveredSensor {
-  deviceId: string
+  deviceId: string | null
+  sensorId?: number          // set for unassigned persisted sensors (re-assign instead of insert)
   sensorType: string
+  label?: string | null
   lastSeen: number
   latestValue: number | null
   streamUrl?: string | null

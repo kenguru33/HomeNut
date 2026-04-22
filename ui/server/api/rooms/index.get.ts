@@ -51,7 +51,7 @@ export default defineEventHandler(async (): Promise<RoomWithSensors[]> => {
   const refStmt = db.prepare('SELECT ref_temp, ref_humidity FROM room_references WHERE room_id = ?')
 
   return rooms.map(room => {
-    const ref = refStmt.get(room.id) as { ref_temp: number; ref_humidity: number } | undefined
+    const ref = refStmt.get(room.id) as { ref_temp: number | null; ref_humidity: number | null } | undefined
 
     const sensorViews: SensorView[] = sensors
       .filter(s => s.room_id === room.id)

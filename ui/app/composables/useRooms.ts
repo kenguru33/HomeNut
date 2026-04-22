@@ -27,21 +27,40 @@ export function useRooms() {
     await poll()
   }
 
+  async function renameRoom(id: number, name: string) {
+    const room = rooms.value.find(r => r.id === id)
+    const prev = room?.name
+    if (room) room.name = name
+    try {
+      await $fetch(`/api/rooms/${id}`, { method: 'PATCH', body: { name } })
+    } catch {
+      if (room && prev !== undefined) room.name = prev
+    }
+  }
+
   async function saveReference(roomId: number, ref: RoomReference) {
     await $fetch(`/api/rooms/${roomId}/reference`, { method: 'PUT', body: ref })
     const room = rooms.value.find(r => r.id === roomId)
-    if (room) room.reference = ref
+    if (room) {
+      room.reference = (ref.refTemp === null && ref.refHumidity === null) ? null : ref
+    }
   }
 
   async function clearReference(roomId: number) {
-    await $fetch(`/api/rooms/${roomId}/reference`, { method: 'PUT', body: { refTemp: 21, refHumidity: 50 } })
     const room = rooms.value.find(r => r.id === roomId)
+    const prev = room?.reference ?? null
     if (room) room.reference = null
+    try {
+      await $fetch(`/api/rooms/${roomId}/reference`, { method: 'DELETE' })
+    } catch {
+      if (room) room.reference = prev
+    }
   }
 
   async function addSensor(payload: {
     roomId: number
     type: SensorType
+    sensorId?: number
     deviceId?: string
     label?: string
     streamUrl?: string
@@ -52,10 +71,18 @@ export function useRooms() {
   }
 
   async function removeSensor(sensorId: number) {
-    await $fetch(`/api/sensors/${sensorId}`, { method: 'DELETE' })
-    rooms.value.forEach(room => {
-      room.sensors = room.sensors.filter(s => s.id !== sensorId)
-    })
+    const room = rooms.value.find(r => r.sensors.some(s => s.id === sensorId))
+    rooms.value = rooms.value.map(r => ({
+      ...r,
+      sensors: r.sensors.filter(s => s.id !== sensorId),
+    }))
+    try {
+      if (room) {
+        await $fetch(`/api/rooms/${room.id}/sensors/${sensorId}`, { method: 'DELETE' })
+      }
+    } catch {
+      await refresh()
+    }
   }
 
   // Live stream modal state
@@ -75,6 +102,7 @@ export function useRooms() {
     lastUpdated,
     addRoom,
     removeRoom,
+    renameRoom,
     saveReference,
     clearReference,
     addSensor,
