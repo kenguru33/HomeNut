@@ -184,11 +184,11 @@ function sensorDisplayLabel(s: SensorView) {
           </span>
         </div>
 
-        <!-- Ref sliders (only shown if climate sensors present) -->
+        <!-- Ref sliders (only shown for present climate sensors) -->
         <template v-if="hasClimate">
           <div class="divider" />
 
-          <div class="slider-row">
+          <div v-if="tempSensor" class="slider-row">
             <div class="slider-labels">
               <span>🌡️ Reference temp</span>
               <span class="slider-value">{{ refTemp }}°C</span>
@@ -197,7 +197,7 @@ function sensorDisplayLabel(s: SensorView) {
             <div class="slider-ticks"><span>10°</span><span>20°</span><span>30°</span></div>
           </div>
 
-          <div class="slider-row">
+          <div v-if="humSensor" class="slider-row">
             <div class="slider-labels">
               <span>💧 Reference humidity</span>
               <span class="slider-value">{{ refHumidity }}%</span>
@@ -208,7 +208,7 @@ function sensorDisplayLabel(s: SensorView) {
 
           <div class="edit-actions">
             <button class="btn-clear" @click="clearRef">Clear ref</button>
-            <button class="btn-save" @click="saveRef">Save reference</button>
+            <button class="btn-save" @click="saveRef">Save</button>
           </div>
         </template>
       </div>

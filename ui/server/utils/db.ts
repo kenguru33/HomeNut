@@ -50,6 +50,12 @@ export function initDb() {
       last_seen    INTEGER NOT NULL,
       PRIMARY KEY (device_id, type)
     );
+
+    CREATE TABLE IF NOT EXISTS blocked_sensors (
+      device_id TEXT NOT NULL,
+      type      TEXT NOT NULL,
+      PRIMARY KEY (device_id, type)
+    );
   `)
 
   // Migrations: add columns that may be missing from older DB files

@@ -223,6 +223,9 @@
 
     ensureWiFiConnected();
     deviceId = getDeviceId();
+    if (strcmp(ssid, "Wokwi-GUEST") == 0) {
+      deviceId = "wokwi-" + String(random(1000, 9999));
+    }
     Serial.printf("[Device] ID: %s\n", deviceId.c_str());
 
     xTaskCreatePinnedToCore(taskReadSensor, "SensorTask", 4096, NULL, 1, NULL, 1);

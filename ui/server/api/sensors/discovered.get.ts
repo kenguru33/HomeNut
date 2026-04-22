@@ -9,7 +9,14 @@ export default defineEventHandler(async (): Promise<DiscoveredSensor[]> => {
     .prepare('SELECT device_id, type FROM sensors WHERE device_id IS NOT NULL')
     .all() as { device_id: string; type: string }[]
 
-  const assignedSet = new Set(assigned.map(s => `${s.device_id}:${s.type}`))
+  const blocked = db
+    .prepare('SELECT device_id, type FROM blocked_sensors')
+    .all() as { device_id: string; type: string }[]
+
+  const assignedSet = new Set([
+    ...assigned.map(s => `${s.device_id}:${s.type}`),
+    ...blocked.map(s => `${s.device_id}:${s.type}`),
+  ])
 
   // Time-series sensors from InfluxDB (temperature, humidity, motion)
   const rows = await queryInflux(`
