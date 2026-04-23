@@ -1,7 +1,12 @@
 import type { RoomWithSensors, RoomReference, SensorType, SensorView } from '../../shared/types'
 
 export function useRooms() {
-  const { data, refresh } = useFetch<RoomWithSensors[]>('/api/rooms', { default: () => [] })
+  const { data, refresh } = useFetch<RoomWithSensors[]>('/api/rooms', {
+    default: () => [],
+    onResponseError({ response }) {
+      if (response.status === 401) navigateTo('/login')
+    },
+  })
   const rooms = data as Ref<RoomWithSensors[]>
 
   const lastUpdated = ref(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
