@@ -11,6 +11,7 @@ const emit = defineEmits<{
   (e: 'add-sensor', roomId: number): void
   (e: 'open-live', sensorId: number): void
   (e: 'view-history', sensor: SensorView): void
+  (e: 'edit-sensor', sensorId: number): void
 }>()
 
 const tempSensor    = computed(() => props.room.sensors.find(s => s.type === 'temperature') ?? null)
@@ -128,24 +129,40 @@ function recentMotion(ts: number | null) {
       <div v-if="tempSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', tempSensor)">
         <span class="tile-icon">🌡️</span>
         <span class="tile-value">{{ tempSensor.latestValue !== null ? `${tempSensor.latestValue}°C` : '—' }}</span>
-        <span class="tile-label">{{ tempSensor.label ?? 'Temperature' }}</span>
+        <span class="tile-label">Temperature</span>
+        <span v-if="tempSensor.label" class="tile-custom-label">{{ tempSensor.label }}</span>
         <span v-if="room.reference?.refTemp !== null && room.reference !== null" class="tile-ref">
           target {{ room.reference.refTemp }}°
           <span v-if="tempDev" class="dev" :class="parseFloat(tempDev) > 0 ? 'over' : 'under'">{{ tempDev }}</span>
         </span>
-        <button v-if="editing" class="tile-remove" title="Remove sensor" @click.stop="confirmSensor = tempSensor.id">×</button>
+        <div v-if="editing" class="tile-actions">
+          <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', tempSensor.id)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </button>
+          <button class="tile-action-btn remove" title="Remove sensor" @click.stop="confirmSensor = tempSensor.id">×</button>
+        </div>
       </div>
 
       <!-- Humidity -->
       <div v-if="humSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', humSensor)">
         <span class="tile-icon">💧</span>
         <span class="tile-value">{{ humSensor.latestValue !== null ? `${humSensor.latestValue}%` : '—' }}</span>
-        <span class="tile-label">{{ humSensor.label ?? 'Humidity' }}</span>
+        <span class="tile-label">Humidity</span>
+        <span v-if="humSensor.label" class="tile-custom-label">{{ humSensor.label }}</span>
         <span v-if="room.reference !== null && room.reference?.refHumidity !== null" class="tile-ref">
           target {{ room.reference.refHumidity }}%
           <span v-if="humDev" class="dev" :class="parseFloat(humDev) > 0 ? 'over' : 'under'">{{ humDev }}</span>
         </span>
-        <button v-if="editing" class="tile-remove" title="Remove sensor" @click.stop="confirmSensor = humSensor.id">×</button>
+        <div v-if="editing" class="tile-actions">
+          <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', humSensor.id)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </button>
+          <button class="tile-action-btn remove" title="Remove sensor" @click.stop="confirmSensor = humSensor.id">×</button>
+        </div>
       </div>
 
       <!-- Cameras -->
@@ -165,7 +182,14 @@ function recentMotion(ts: number | null) {
         <div class="cam-overlay">▶ Live</div>
         <div v-if="recentMotion(cam.lastMotion)" class="motion-badge">Motion</div>
         <span class="cam-floor-label">{{ cam.label ?? 'Camera' }}</span>
-        <button v-if="editing" class="tile-remove cam-remove" title="Remove sensor" @click.stop="confirmSensor = cam.id">×</button>
+        <div v-if="editing" class="tile-actions cam-actions">
+          <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', cam.id)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </button>
+          <button class="tile-action-btn remove" title="Remove sensor" @click.stop="confirmSensor = cam.id">×</button>
+        </div>
       </div>
 
       <!-- Motion -->
@@ -179,9 +203,17 @@ function recentMotion(ts: number | null) {
         <span class="tile-value" :class="{ 'motion-recent': recentMotion(motionSensor.lastMotion) }">
           {{ motionSensor.lastMotion ? (recentMotion(motionSensor.lastMotion) ? 'Detected' : 'Clear') : '—' }}
         </span>
-        <span class="tile-label">{{ motionSensor.label ?? 'Motion' }}</span>
+        <span class="tile-label">Motion</span>
+        <span v-if="motionSensor.label" class="tile-custom-label">{{ motionSensor.label }}</span>
         <span v-if="motionSensor.lastMotion" class="tile-ref">{{ motionLabel(motionSensor.lastMotion) }}</span>
-        <button v-if="editing" class="tile-remove" title="Remove sensor" @click.stop="confirmSensor = motionSensor.id">×</button>
+        <div v-if="editing" class="tile-actions">
+          <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', motionSensor.id)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </button>
+          <button class="tile-action-btn remove" title="Remove sensor" @click.stop="confirmSensor = motionSensor.id">×</button>
+        </div>
       </div>
 
     </div>
@@ -370,6 +402,16 @@ function recentMotion(ts: number | null) {
   letter-spacing: 0.06em;
 }
 
+.tile-custom-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .tile-ref {
   font-size: 0.68rem;
   color: #475569;
@@ -384,10 +426,15 @@ function recentMotion(ts: number | null) {
 .dev.over  { color: #f87171; }
 .dev.under { color: #34d399; }
 
-.tile-remove {
+.tile-actions {
   position: absolute;
   top: 5px;
   right: 5px;
+  display: flex;
+  gap: 2px;
+}
+
+.tile-action-btn {
   background: none;
   border: none;
   color: #334155;
@@ -397,9 +444,18 @@ function recentMotion(ts: number | null) {
   padding: 2px 4px;
   border-radius: 4px;
   transition: color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.tile-remove:hover { color: #f87171; }
+.tile-action-btn:hover { color: #94a3b8; }
+.tile-action-btn.remove:hover { color: #f87171; }
+
+.cam-actions .tile-action-btn {
+  background: rgba(0,0,0,0.55);
+  color: #cbd5e1;
+}
 
 /* Camera tile */
 .camera-tile {
@@ -453,10 +509,6 @@ function recentMotion(ts: number | null) {
   text-align: center;
 }
 
-.cam-remove {
-  background: rgba(0,0,0,0.55);
-  color: #cbd5e1;
-}
 
 .motion-badge {
   position: absolute;

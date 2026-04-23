@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
 
   // Re-assign an existing unassigned sensor rather than inserting a duplicate
   if (body.sensorId) {
-    const result = db.prepare('UPDATE sensors SET room_id = ? WHERE id = ? AND room_id IS NULL').run(body.roomId, body.sensorId)
+    const result = db.prepare('UPDATE sensors SET room_id = ?, label = ? WHERE id = ? AND room_id IS NULL').run(body.roomId, body.label ?? null, body.sensorId)
     if (result.changes === 0) throw createError({ statusCode: 404, message: 'sensor not found or already assigned' })
     return { id: body.sensorId }
   }

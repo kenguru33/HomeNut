@@ -18,6 +18,35 @@ const showAddRoom = ref(false)
 const addSensorForRoom = ref<{ id: number; name: string } | null>(null)
 const historyTarget = ref<{ sensor: SensorView; roomName: string } | null>(null)
 
+const typeIcon: Record<string, string> = {
+  temperature: '🌡️', humidity: '💧', camera: '📷', motion: '🏃',
+}
+const typeLabel: Record<string, string> = {
+  temperature: 'Temperature', humidity: 'Humidity', camera: 'Camera', motion: 'Motion',
+}
+
+const editingSensor = ref<{ id: number; type: string; label: string | null } | null>(null)
+const editingLabel = ref('')
+
+function openEditSensor(sensorId: number) {
+  for (const room of rooms.value) {
+    const sensor = room.sensors.find(s => s.id === sensorId)
+    if (sensor) {
+      editingSensor.value = { id: sensor.id, type: sensor.type, label: sensor.label }
+      editingLabel.value = sensor.label ?? ''
+      return
+    }
+  }
+}
+
+async function saveSensorLabel() {
+  const sensor = editingSensor.value
+  if (!sensor) return
+  await $fetch(`/api/sensors/${sensor.id}`, { method: 'PATCH', body: { label: editingLabel.value.trim() || null } })
+  editingSensor.value = null
+  await refresh()
+}
+
 async function onAddRoom(name: string) {
   await addRoom(name)
   showAddRoom.value = false
@@ -71,6 +100,7 @@ async function onAddSensor(payload: {
         @add-sensor="id => addSensorForRoom = rooms.find(r => r.id === id) ?? null"
         @open-live="id => activeSensorId = id"
         @view-history="sensor => historyTarget = { sensor, roomName: room.name }"
+        @edit-sensor="openEditSensor"
       />
     </div>
 
@@ -102,6 +132,33 @@ async function onAddSensor(payload: {
       @close="historyTarget = null"
     />
   </div>
+
+  <Teleport to="body">
+    <div v-if="editingSensor" class="modal-overlay" @click.self="editingSensor = null">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-icon">{{ typeIcon[editingSensor.type] ?? '?' }}</span>
+          <div class="modal-title">{{ typeLabel[editingSensor.type] || editingSensor.type }}</div>
+        </div>
+        <label class="modal-field">
+          <span>Label</span>
+          <input
+            v-model="editingLabel"
+            class="modal-input"
+            placeholder="Custom label…"
+            maxlength="60"
+            autofocus
+            @keydown.enter="saveSensorLabel"
+            @keydown.escape="editingSensor = null"
+          />
+        </label>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="editingSensor = null">Cancel</button>
+          <button class="btn-save" @click="saveSensorLabel">Save</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style>
@@ -146,6 +203,97 @@ body {
 }
 
 .btn-add-room:hover { background: #6b93c7; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.modal-card {
+  background: #1e2130;
+  border: 1px solid #2a2f45;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-icon { font-size: 1.6rem; }
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.modal-input {
+  background: #0f1117;
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.modal-input:focus { border-color: #4a6fa5; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-cancel {
+  background: none;
+  color: #64748b;
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.btn-cancel:hover { color: #94a3b8; }
+
+.btn-save {
+  background: #4a6fa5;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-save:hover { background: #6b93c7; }
 
 .empty {
   display: flex;

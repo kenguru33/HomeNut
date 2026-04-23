@@ -52,6 +52,23 @@ async function confirmDelete() {
   pendingDelete.value = null
   await refresh()
 }
+
+const editingSensor = ref<SensorRow | null>(null)
+const editingLabel = ref('')
+
+function openEdit(sensor: SensorRow) {
+  if (sensor.id === null) return
+  editingSensor.value = sensor
+  editingLabel.value = sensor.label ?? ''
+}
+
+async function saveEdit() {
+  const sensor = editingSensor.value
+  if (!sensor?.id) return
+  await $fetch(`/api/sensors/${sensor.id}`, { method: 'PATCH', body: { label: editingLabel.value.trim() || null } })
+  editingSensor.value = null
+  await refresh()
+}
 </script>
 
 <template>
@@ -73,7 +90,8 @@ async function confirmDelete() {
         <span class="sensor-icon">{{ typeIcon[sensor.type] ?? '?' }}</span>
 
         <div class="sensor-info">
-          <span class="sensor-name">{{ sensor.label || typeLabel[sensor.type] || sensor.type }}</span>
+          <span class="sensor-name">{{ typeLabel[sensor.type] || sensor.type }}</span>
+          <span v-if="sensor.label" class="sensor-label">{{ sensor.label }}</span>
           <span class="sensor-room" :class="{ unassigned: !sensor.roomName }">
             {{ sensor.roomName ?? 'Unassigned' }}
           </span>
@@ -85,11 +103,18 @@ async function confirmDelete() {
           <span class="age">{{ formatAge(sensor.lastRecordedAt) }}</span>
         </div>
 
-        <button class="delete-btn" title="Remove sensor" @click="pendingDelete = sensor">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
-          </svg>
-        </button>
+        <div class="row-actions">
+          <button v-if="sensor.id !== null" class="action-btn" title="Edit sensor" @click="openEdit(sensor)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </button>
+          <button class="action-btn delete" title="Remove sensor" @click="pendingDelete = sensor">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -100,6 +125,38 @@ async function confirmDelete() {
     @confirm="confirmDelete"
     @cancel="pendingDelete = null"
   />
+
+  <Teleport to="body">
+    <div v-if="editingSensor" class="modal-overlay" @click.self="editingSensor = null">
+      <div class="modal-card">
+        <div class="modal-header">
+          <span class="modal-icon">{{ typeIcon[editingSensor.type] ?? '?' }}</span>
+          <div>
+            <div class="modal-title">{{ typeLabel[editingSensor.type] || editingSensor.type }}</div>
+            <div v-if="editingSensor.deviceId" class="modal-device-id">{{ editingSensor.deviceId }}</div>
+          </div>
+        </div>
+
+        <label class="modal-field">
+          <span>Label</span>
+          <input
+            v-model="editingLabel"
+            class="modal-input"
+            placeholder="Custom label…"
+            maxlength="60"
+            autofocus
+            @keydown.enter="saveEdit"
+            @keydown.escape="editingSensor = null"
+          />
+        </label>
+
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="editingSensor = null">Cancel</button>
+          <button class="btn-save" @click="saveEdit">Save</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -209,6 +266,14 @@ async function confirmDelete() {
   text-overflow: ellipsis;
 }
 
+.sensor-label {
+  font-size: 0.78rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sensor-room {
   font-size: 0.75rem;
   color: #64748b;
@@ -251,29 +316,131 @@ async function confirmDelete() {
   color: #475569;
 }
 
-.delete-btn {
+.row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.action-btn {
   background: none;
   border: 1px solid transparent;
   color: #334155;
   border-radius: 7px;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  flex-shrink: 0;
   transition: color 0.15s, border-color 0.15s;
 }
 
-.sensor-row:hover .delete-btn {
+.sensor-row:hover .action-btn {
   color: #475569;
   border-color: #2a2f45;
 }
 
-.delete-btn:hover {
-  color: #f87171 !important;
-  border-color: #ef4444 !important;
+.action-btn:hover { color: #94a3b8 !important; border-color: #4a6fa5 !important; }
+.action-btn.delete:hover { color: #f87171 !important; border-color: #ef4444 !important; }
+
+/* ── Edit modal ──────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
 }
+
+.modal-card {
+  background: #1e2130;
+  border: 1px solid #2a2f45;
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-icon { font-size: 1.6rem; }
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.modal-device-id {
+  font-size: 0.7rem;
+  color: #475569;
+  font-family: monospace;
+  margin-top: 2px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.modal-input {
+  background: #0f1117;
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.modal-input:focus { border-color: #4a6fa5; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-cancel {
+  background: none;
+  color: #64748b;
+  border: 1px solid #2a2f45;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.btn-cancel:hover { color: #94a3b8; }
+
+.btn-save {
+  background: #4a6fa5;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-save:hover { background: #6b93c7; }
 
 </style>
