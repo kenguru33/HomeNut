@@ -359,10 +359,10 @@ function recentMotion(ts: number | null) {
 .edit-btn.active   { color: #a0c4ff; border-color: #4a6fa5; background: #151825; }
 .delete-btn:hover  { color: #f87171; border-color: #ef4444; }
 
-/* Sensor grid — auto-fill keeps empty tracks so ≥2 cols are always reserved */
+/* Sensor grid — max 2 columns */
 .sensor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 

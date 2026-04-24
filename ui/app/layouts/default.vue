@@ -3,8 +3,17 @@ const { loggedIn, user, clear } = useUserSession()
 const route = useRoute()
 const sidebarOpen = ref(true)
 
+function handleResize() {
+  sidebarOpen.value = window.innerWidth > 768
+}
+
 onMounted(() => {
   sidebarOpen.value = window.innerWidth > 768
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
 })
 
 watch(() => route.path, () => {
