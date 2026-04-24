@@ -5,7 +5,7 @@ let _client: InfluxDBClient | null = null
 export function getInfluxClient(): InfluxDBClient {
   if (_client) return _client
   _client = new InfluxDBClient({
-    host: process.env.INFLUXDB_URL ?? 'http://localhost:8086',
+    host: process.env.INFLUXDB_URL ?? 'http://127.0.0.1:8086',
     token: process.env.INFLUXDB_TOKEN ?? '',
     database: process.env.INFLUXDB_DATABASE ?? 'warren',
   })

@@ -307,7 +307,7 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 560px));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 420px));
   gap: 16px;
 }
 </style>

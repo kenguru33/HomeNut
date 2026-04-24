@@ -1,6 +1,14 @@
 <script setup lang="ts">
 const { data: sensors, refresh } = useFetch('/api/sensors', { default: () => [] })
 
+const now = ref(Date.now())
+
+onMounted(() => {
+  const tickTimer = setInterval(() => { now.value = Date.now() }, 5000)
+  const refreshTimer = setInterval(() => refresh(), 30000)
+  onUnmounted(() => { clearInterval(tickTimer); clearInterval(refreshTimer) })
+})
+
 const onlyUnused = ref(false)
 const visibleSensors = computed(() =>
   onlyUnused.value ? sensors.value.filter(s => !s.roomName) : sensors.value
@@ -30,7 +38,7 @@ function formatValue(sensor: { type: string; latestValue: number | null }) {
 
 function formatAge(ms: number | null) {
   if (!ms) return 'Never'
-  const diff = Math.round((Date.now() - ms) / 1000)
+  const diff = Math.round((now.value - ms) / 1000)
   if (diff < 60) return `${diff}s ago`
   if (diff < 3600) return `${Math.round(diff / 60)}m ago`
   if (diff < 86400) return `${Math.round(diff / 3600)}h ago`
