@@ -26,4 +26,3 @@ docker/admin.token
 
 # Warren runtime
 .warren.pid
-warren
