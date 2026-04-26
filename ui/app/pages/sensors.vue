@@ -36,6 +36,11 @@ function formatValue(sensor: { type: string; latestValue: number | null }) {
   return '—'
 }
 
+function isOffline(ms: number | null): boolean {
+  if (!ms) return true
+  return now.value - ms > 300_000
+}
+
 function formatAge(ms: number | null) {
   if (!ms) return 'Never'
   const diff = Math.round((now.value - ms) / 1000)
@@ -108,8 +113,9 @@ async function saveEdit() {
         </div>
 
         <div class="sensor-value">
-          <span class="value">{{ formatValue(sensor) }}</span>
+          <span class="value" :class="{ offline: sensor.type !== 'camera' && isOffline(sensor.lastRecordedAt) }">{{ formatValue(sensor) }}</span>
           <span class="age">{{ formatAge(sensor.lastRecordedAt) }}</span>
+          <span v-if="sensor.type !== 'camera' && isOffline(sensor.lastRecordedAt)" class="offline-badge">Offline</span>
           <div v-if="sensor.type === 'temperature'" class="relay-indicators">
             <span class="relay-indicator" :class="{ active: sensor.heaterActive }" title="Heater">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -347,6 +353,20 @@ async function saveEdit() {
   font-size: 0.9rem;
   font-weight: 600;
   color: #a0c4ff;
+}
+
+.value.offline { color: #475569; }
+
+.offline-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .age {
