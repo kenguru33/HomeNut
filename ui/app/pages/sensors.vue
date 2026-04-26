@@ -38,7 +38,7 @@ function formatValue(sensor: { type: string; latestValue: number | null }) {
 
 function isOffline(ms: number | null): boolean {
   if (!ms) return true
-  return now.value - ms > 300_000
+  return now.value - ms > 30_000
 }
 
 function formatAge(ms: number | null) {
@@ -100,7 +100,7 @@ async function saveEdit() {
     </div>
 
     <div v-else class="sensor-list">
-      <div v-for="(sensor, i) in visibleSensors" :key="sensor.id ?? `${sensor.deviceId}:${sensor.type}:${i}`" class="sensor-row">
+      <div v-for="(sensor, i) in visibleSensors" :key="sensor.id ?? `${sensor.deviceId}:${sensor.type}:${i}`" class="sensor-row" :class="{ 'sensor-offline': sensor.type !== 'camera' && isOffline(sensor.lastRecordedAt) }">
         <span class="sensor-icon">{{ typeIcon[sensor.type] ?? '?' }}</span>
 
         <div class="sensor-info">
@@ -285,6 +285,15 @@ async function saveEdit() {
 
 .sensor-row:hover {
   border-color: #4a6fa5;
+}
+
+.sensor-row.sensor-offline {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.04);
+}
+
+.sensor-row.sensor-offline:hover {
+  border-color: rgba(248, 113, 113, 0.7);
 }
 
 .sensor-icon {

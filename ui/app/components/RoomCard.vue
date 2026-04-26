@@ -94,7 +94,7 @@ onMounted(() => {
   onUnmounted(() => clearInterval(t))
 })
 function isOffline(ms: number | null) {
-  return !ms || now.value - ms > 300_000
+  return !ms || now.value - ms > 30_000
 }
 </script>
 
@@ -134,7 +134,7 @@ function isOffline(ms: number | null) {
     <div v-if="room.sensors.length" class="sensor-grid">
 
       <!-- Temperature -->
-      <div v-if="tempSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', tempSensor)">
+      <div v-if="tempSensor" class="sensor-tile sensor-clickable" :class="{ 'tile-offline': isOffline(tempSensor.lastRecordedAt) }" @click="emit('view-history', tempSensor)">
         <span class="tile-icon">🌡️</span>
         <span class="tile-value" :class="{ offline: isOffline(tempSensor.lastRecordedAt) }">{{ tempSensor.latestValue !== null ? `${tempSensor.latestValue}°C` : '—' }}</span>
         <span class="tile-label">Temperature</span>
@@ -167,7 +167,7 @@ function isOffline(ms: number | null) {
       </div>
 
       <!-- Humidity -->
-      <div v-if="humSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', humSensor)">
+      <div v-if="humSensor" class="sensor-tile sensor-clickable" :class="{ 'tile-offline': isOffline(humSensor.lastRecordedAt) }" @click="emit('view-history', humSensor)">
         <span class="tile-icon">💧</span>
         <span class="tile-value" :class="{ offline: isOffline(humSensor.lastRecordedAt) }">{{ humSensor.latestValue !== null ? `${humSensor.latestValue}%` : '—' }}</span>
         <span class="tile-label">Humidity</span>
@@ -218,7 +218,7 @@ function isOffline(ms: number | null) {
       <div
         v-if="motionSensor"
         class="sensor-tile sensor-clickable"
-        :class="{ 'motion-active': recentMotion(motionSensor.lastMotion) }"
+        :class="{ 'motion-active': recentMotion(motionSensor.lastMotion), 'tile-offline': isOffline(motionSensor.lastRecordedAt) }"
         @click="emit('view-history', motionSensor)"
       >
         <span class="tile-icon">🏃</span>
@@ -567,6 +567,11 @@ function isOffline(ms: number | null) {
 .motion-recent { color: #f87171; }
 
 .tile-value.offline { color: #475569; }
+
+.sensor-tile.tile-offline {
+  background: rgba(248, 113, 113, 0.06);
+  outline: 1px solid rgba(248, 113, 113, 0.3);
+}
 
 .tile-offline-badge {
   font-size: 0.58rem;
