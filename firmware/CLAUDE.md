@@ -61,10 +61,11 @@ docker compose up -d
 
 ## Sensor Architecture
 
-`sensor/src/main.cpp` uses FreeRTOS with two pinned tasks:
+`sensor/src/main.cpp` uses FreeRTOS with three pinned tasks:
 
-- **`taskReadSensor`** (core 1, priority 1) — polls DHT22 every 5 s, pushes valid readings into a `QueueHandle_t`
+- **`taskReadSensor`** (core 1, priority 1) — polls DHT22 at `config.pollInterval` (default 5 s), pushes valid readings into a `QueueHandle_t`
 - **`taskMQTT`** (core 0, priority 1) — drains the queue, publishes to `warren/sensors/{deviceId}/temperature` and `warren/sensors/{deviceId}/humidity`, handles reconnection
+- **`taskFetchConfig`** (core 0, priority 1) — polls `BACKEND_URL/api/sensors/config/{deviceId}` at `config.configFetchInterval` (default 60 s), updates the shared `SensorConfig` struct and persists changes to NVS
 
 `loop()` is intentionally empty; all work is done in tasks.
 
@@ -73,9 +74,9 @@ docker compose up -d
 - GPIO 4 — fan relay
 - GPIO 19 — heater relay
 
-**Control logic** lives in `mqttCallback`: subscribes to `home/temperature` and adjusts relay states around the room's target temperature (heater ON when < target − 2 °C, heater OFF when > target + 2 °C, fan ON when > target + 10 °C). Falls back to hardcoded thresholds (18/22/30 °C) when no target is available.
+**Control logic** lives in `mqttCallback`: subscribes to `home/temperature` and adjusts relay states using values from the `SensorConfig` struct (heaterOnOffset, heaterOffOffset, fanThreshold). Falls back to hardcoded thresholds (18/22/30 °C) when `config.refTemp` is NAN.
 
-**Target fetch** — a third task `taskFetchTarget` (core 0) polls `BACKEND_URL/api/sensors/target/{deviceId}` every 60 s and updates the shared `targetTemp` used by the control logic. Unknown/unassigned device or `refTemp: null` resets it to `NAN` (fallback).
+**Runtime config** — the `SensorConfig` struct holds all tunable values. On boot, `loadConfigFromNVS()` restores values from the ESP32 NVS flash (namespace `"cfg"`), so the device operates with the last-known config even without network. `taskFetchConfig` fetches the full config object from the backend and calls `saveConfigToNVS()` only when values change, to minimise flash wear.
 
 ## Secrets
 
@@ -86,4 +87,5 @@ Copy `sensor/include/secrets.h.example` to `sensor/include/secrets.h` and fill i
 Declared in `sensor/platformio.ini` and managed by PlatformIO:
 - `knolleary/PubSubClient` — MQTT client
 - `beegee-tokyo/DHT sensor library for ESPx` — DHT22 driver
-- `bblanchon/ArduinoJson` — JSON parsing for backend target fetch
+- `bblanchon/ArduinoJson` — JSON parsing for config fetch
+- `Preferences` — ESP32 NVS key-value storage (part of Arduino core, no declaration needed)

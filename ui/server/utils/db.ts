@@ -82,6 +82,18 @@ export function initDb() {
       password_hash TEXT    NOT NULL,
       updated_at    DATETIME NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS sensor_config (
+      device_id             TEXT    PRIMARY KEY,
+      ref_temp              REAL,
+      heater_on_offset      REAL    NOT NULL DEFAULT 2.0,
+      heater_off_offset     REAL    NOT NULL DEFAULT 2.0,
+      fan_threshold         REAL    NOT NULL DEFAULT 10.0,
+      poll_interval         INTEGER NOT NULL DEFAULT 5,
+      config_fetch_interval INTEGER NOT NULL DEFAULT 60,
+      updated_at            TEXT,
+      last_fetched_at       TEXT
+    );
   `)
 
   // Migrations: add columns that may be missing from older DB files
