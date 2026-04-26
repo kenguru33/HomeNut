@@ -3,6 +3,7 @@
   #include <HTTPClient.h>
   #include <PubSubClient.h>
   #include <ArduinoJson.h>
+  #include <Preferences.h>
   #include <math.h>
   #include "DHTesp.h"
   #include "secrets.h"
@@ -27,6 +28,7 @@
   DHTesp dhtSensor;
   WiFiClient espClient;
   PubSubClient client(espClient);
+  Preferences prefs;
 
   // -------------------- Queue --------------------
   QueueHandle_t sensorQueue;
@@ -40,9 +42,16 @@
   // -------------------- Device ID --------------------
   String deviceId;
 
-  // -------------------- Target (from backend) --------------------
-  // NAN means "no target, use hardcoded fallback thresholds"
-  volatile float targetTemp = NAN;
+  // -------------------- Runtime config --------------------
+  struct SensorConfig {
+    float refTemp             = NAN;  // NAN = use hardcoded fallback thresholds
+    float heaterOnOffset      = 2.0f;
+    float heaterOffOffset     = 2.0f;
+    float fanThreshold        = 10.0f;
+    int   pollInterval        = 5000;  // ms
+    int   configFetchInterval = 60000; // ms
+  };
+  SensorConfig config;
 
   String getDeviceId() {
     uint8_t mac[6];
@@ -52,11 +61,38 @@
     return String(id);
   }
 
+  // -------------------- NVS --------------------
+  void loadConfigFromNVS() {
+    prefs.begin("cfg", true); // read-only
+    config.refTemp             = prefs.getFloat("refTemp", NAN);
+    config.heaterOnOffset      = prefs.getFloat("heatOn",  2.0f);
+    config.heaterOffOffset     = prefs.getFloat("heatOff", 2.0f);
+    config.fanThreshold        = prefs.getFloat("fanThr",  10.0f);
+    config.pollInterval        = prefs.getInt("pollMs",    5000);
+    config.configFetchInterval = prefs.getInt("cfgMs",     60000);
+    prefs.end();
+    Serial.printf("[NVS] Loaded: refTemp=%.2f heatOn=%.2f heatOff=%.2f fan=%.2f poll=%d cfg=%d\n",
+      (float)config.refTemp, (float)config.heaterOnOffset, (float)config.heaterOffOffset,
+      (float)config.fanThreshold, (int)config.pollInterval, (int)config.configFetchInterval);
+  }
+
+  void saveConfigToNVS(const SensorConfig& c) {
+    prefs.begin("cfg", false); // read-write
+    prefs.putFloat("refTemp", c.refTemp);
+    prefs.putFloat("heatOn",  c.heaterOnOffset);
+    prefs.putFloat("heatOff", c.heaterOffOffset);
+    prefs.putFloat("fanThr",  c.fanThreshold);
+    prefs.putInt("pollMs",    c.pollInterval);
+    prefs.putInt("cfgMs",     c.configFetchInterval);
+    prefs.end();
+    Serial.println("[NVS] Config saved");
+  }
+
   // -------------------- Forward declarations --------------------
   void ensureWiFiConnected();
   bool ensureMQTTConnected();
   void mqttCallback(char* topic, byte* payload, unsigned int length);
-  void fetchTargetTemp();
+  void fetchConfig();
 
   // -------------------- WiFi --------------------
   void ensureWiFiConnected() {
@@ -99,12 +135,12 @@
     if (strcmp(topic, "home/temperature") == 0 && length > 0) {
       float tempValue = String((char*)payload, length).toFloat();
 
-      float t = targetTemp;
+      float t = config.refTemp;
       float heaterOn, heaterOff, fanOn;
       if (!isnan(t)) {
-        heaterOn  = t - 2.0;
-        heaterOff = t + 2.0;
-        fanOn     = t + 10.0;
+        heaterOn  = t - config.heaterOnOffset;
+        heaterOff = t + config.heaterOffOffset;
+        fanOn     = t + config.fanThreshold;
       } else {
         heaterOn = 18.0; heaterOff = 22.0; fanOn = 30.0;
       }
@@ -128,17 +164,17 @@
     }
   }
 
-  // -------------------- Target fetch --------------------
-  void fetchTargetTemp() {
+  // -------------------- Config fetch --------------------
+  void fetchConfig() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     HTTPClient http;
-    String url = String(BACKEND_URL) + "/api/sensors/target/" + deviceId;
+    String url = String(BACKEND_URL) + "/api/sensors/config/" + deviceId;
     http.begin(url);
     int code = http.GET();
 
     if (code != 200) {
-      Serial.printf("[Target] HTTP %d — keeping previous target\n", code);
+      Serial.printf("[Config] HTTP %d — keeping previous config\n", code);
       http.end();
       return;
     }
@@ -149,26 +185,47 @@
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
     if (err) {
-      Serial.printf("[Target] JSON parse error: %s\n", err.c_str());
+      Serial.printf("[Config] JSON parse error: %s\n", err.c_str());
       return;
     }
 
-    if (doc["refTemp"].isNull()) {
-      targetTemp = NAN;
-      Serial.println("[Target] no target (null) — using hardcoded fallback");
+    SensorConfig next;
+    next.refTemp             = doc["refTemp"].isNull() ? NAN : doc["refTemp"].as<float>();
+    next.heaterOnOffset      = doc["heaterOnOffset"]      | 2.0f;
+    next.heaterOffOffset     = doc["heaterOffOffset"]     | 2.0f;
+    next.fanThreshold        = doc["fanThreshold"]        | 10.0f;
+    next.pollInterval        = (doc["pollInterval"]       | 5) * 1000;
+    next.configFetchInterval = (doc["configFetchInterval"]| 60) * 1000;
+
+    // Only write NVS when values actually change
+    bool changed =
+      (isnan(next.refTemp) != isnan(config.refTemp)) ||
+      (!isnan(next.refTemp) && next.refTemp != config.refTemp) ||
+      next.heaterOnOffset      != config.heaterOnOffset  ||
+      next.heaterOffOffset     != config.heaterOffOffset ||
+      next.fanThreshold        != config.fanThreshold    ||
+      next.pollInterval        != config.pollInterval    ||
+      next.configFetchInterval != config.configFetchInterval;
+
+    config = next;
+
+    if (changed) {
+      saveConfigToNVS(next);
+      Serial.printf("[Config] Updated: refTemp=%.2f heatOn=%.2f heatOff=%.2f fan=%.2f poll=%d cfg=%d\n",
+        next.refTemp, next.heaterOnOffset, next.heaterOffOffset,
+        next.fanThreshold, next.pollInterval, next.configFetchInterval);
     } else {
-      targetTemp = doc["refTemp"].as<float>();
-      Serial.printf("[Target] fetched refTemp=%.2f\n", (float)targetTemp);
+      Serial.println("[Config] No change");
     }
   }
 
-  // -------------------- TASK: TARGET --------------------
-  void taskFetchTarget(void *pvParameters) {
+  // -------------------- TASK: CONFIG FETCH --------------------
+  void taskFetchConfig(void *pvParameters) {
     while (true) {
       if (WiFi.status() == WL_CONNECTED) {
-        fetchTargetTemp();
+        fetchConfig();
       }
-      vTaskDelay(pdMS_TO_TICKS(60000));
+      vTaskDelay(pdMS_TO_TICKS(config.configFetchInterval));
     }
   }
 
@@ -191,7 +248,7 @@
         Serial.println("[Sensor] Failed to read from DHT");
       }
 
-      vTaskDelay(pdMS_TO_TICKS(5000));
+      vTaskDelay(pdMS_TO_TICKS(config.pollInterval));
     }
   }
 
@@ -265,6 +322,8 @@
       while (true) delay(1000);
     }
 
+    loadConfigFromNVS();
+
     ensureWiFiConnected();
     deviceId = getDeviceId();
     if (strcmp(WiFi.SSID().c_str(), "Wokwi-GUEST") == 0) {
@@ -274,7 +333,7 @@
 
     xTaskCreatePinnedToCore(taskReadSensor,  "SensorTask", 4096, NULL, 1, NULL, 1);
     xTaskCreatePinnedToCore(taskMQTT,        "MQTTTask",   6144, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(taskFetchTarget, "TargetTask", 6144, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(taskFetchConfig, "CfgTask",    6144, NULL, 1, NULL, 0);
   }
 
   // -------------------- LOOP --------------------
