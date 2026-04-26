@@ -88,6 +88,14 @@ function recentMotion(ts: number | null) {
   return ts ? Date.now() - ts < 5 * 60 * 1000 : false
 }
 
+const now = ref(Date.now())
+onMounted(() => {
+  const t = setInterval(() => { now.value = Date.now() }, 10_000)
+  onUnmounted(() => clearInterval(t))
+})
+function isOffline(ms: number | null) {
+  return !ms || now.value - ms > 30_000
+}
 </script>
 
 <template>
@@ -126,9 +134,9 @@ function recentMotion(ts: number | null) {
     <div v-if="room.sensors.length" class="sensor-grid">
 
       <!-- Temperature -->
-      <div v-if="tempSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', tempSensor)">
+      <div v-if="tempSensor" class="sensor-tile sensor-clickable" :class="{ 'tile-offline': isOffline(tempSensor.lastRecordedAt) }" @click="emit('view-history', tempSensor)">
         <span class="tile-icon">🌡️</span>
-        <span class="tile-value">{{ tempSensor.latestValue !== null ? `${tempSensor.latestValue}°C` : '—' }}</span>
+        <span class="tile-value" :class="{ offline: isOffline(tempSensor.lastRecordedAt) }">{{ tempSensor.latestValue !== null ? `${tempSensor.latestValue}°C` : '—' }}</span>
         <span class="tile-label">Temperature</span>
         <span v-if="tempSensor.label" class="tile-custom-label">{{ tempSensor.label }}</span>
         <span v-if="room.reference?.refTemp !== null && room.reference !== null" class="tile-ref">
@@ -147,6 +155,7 @@ function recentMotion(ts: number | null) {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm6.93-1A7 7 0 0 0 13 4.07V2h-2v2.07A7 7 0 0 0 5.07 10H3v2h2.07A7 7 0 0 0 11 19.93V22h2v-2.07A7 7 0 0 0 18.93 13H21v-2h-2.07zM12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12z"/></svg>
           </span>
         </div>
+        <span v-if="isOffline(tempSensor.lastRecordedAt)" class="tile-offline-badge">Offline</span>
         <div v-if="editing" class="tile-actions">
           <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', tempSensor.id)">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -158,15 +167,16 @@ function recentMotion(ts: number | null) {
       </div>
 
       <!-- Humidity -->
-      <div v-if="humSensor" class="sensor-tile sensor-clickable" @click="emit('view-history', humSensor)">
+      <div v-if="humSensor" class="sensor-tile sensor-clickable" :class="{ 'tile-offline': isOffline(humSensor.lastRecordedAt) }" @click="emit('view-history', humSensor)">
         <span class="tile-icon">💧</span>
-        <span class="tile-value">{{ humSensor.latestValue !== null ? `${humSensor.latestValue}%` : '—' }}</span>
+        <span class="tile-value" :class="{ offline: isOffline(humSensor.lastRecordedAt) }">{{ humSensor.latestValue !== null ? `${humSensor.latestValue}%` : '—' }}</span>
         <span class="tile-label">Humidity</span>
         <span v-if="humSensor.label" class="tile-custom-label">{{ humSensor.label }}</span>
         <span v-if="room.reference !== null && room.reference?.refHumidity !== null" class="tile-ref">
           target {{ room.reference.refHumidity }}%
           <span v-if="humDev" class="dev" :class="parseFloat(humDev) > 0 ? 'over' : 'under'">{{ humDev }}</span>
         </span>
+        <span v-if="isOffline(humSensor.lastRecordedAt)" class="tile-offline-badge">Offline</span>
         <div v-if="editing" class="tile-actions">
           <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', humSensor.id)">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -208,16 +218,17 @@ function recentMotion(ts: number | null) {
       <div
         v-if="motionSensor"
         class="sensor-tile sensor-clickable"
-        :class="{ 'motion-active': recentMotion(motionSensor.lastMotion) }"
+        :class="{ 'motion-active': recentMotion(motionSensor.lastMotion), 'tile-offline': isOffline(motionSensor.lastRecordedAt) }"
         @click="emit('view-history', motionSensor)"
       >
         <span class="tile-icon">🏃</span>
-        <span class="tile-value" :class="{ 'motion-recent': recentMotion(motionSensor.lastMotion) }">
+        <span class="tile-value" :class="{ 'motion-recent': recentMotion(motionSensor.lastMotion), offline: isOffline(motionSensor.lastRecordedAt) }">
           {{ motionSensor.lastMotion ? (recentMotion(motionSensor.lastMotion) ? 'Detected' : 'Clear') : '—' }}
         </span>
         <span class="tile-label">Motion</span>
         <span v-if="motionSensor.label" class="tile-custom-label">{{ motionSensor.label }}</span>
         <span v-if="motionSensor.lastMotion" class="tile-ref">{{ motionLabel(motionSensor.lastMotion) }}</span>
+        <span v-if="isOffline(motionSensor.lastRecordedAt)" class="tile-offline-badge">Offline</span>
         <div v-if="editing" class="tile-actions">
           <button class="tile-action-btn" title="Edit sensor" @click.stop="emit('edit-sensor', motionSensor.id)">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -554,6 +565,26 @@ function recentMotion(ts: number | null) {
 
 /* Motion tile */
 .motion-recent { color: #f87171; }
+
+.tile-value.offline { color: #475569; }
+
+.sensor-tile.tile-offline {
+  background: rgba(248, 113, 113, 0.06);
+  outline: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.tile-offline-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 4px;
+  padding: 1px 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
 
 
 /* Edit panel */
